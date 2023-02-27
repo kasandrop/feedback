@@ -1,0 +1,3027 @@
+
+
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.application.domain.users.IUserRepository;
+import com.leg.banking.application.domain.users.User;
+import com.leg.banking.core.exceptions.UserAlreadyExistsException;
+ 
+import java.io.IOException;
+ 
+public class CreateBasicCurrentAccountCommand implements ICreateBasicCurrentAccountCommand {
+ 
+    IUserRepository userRepository;
+    IAccountRepository basicCurrentAccountRepository;
+ 
+ 
+    public CreateBasicCurrentAccountCommand(IUserRepository userRepository,
+                                            IAccountRepository basicCurrentAccountRepository) {
+        this.basicCurrentAccountRepository = basicCurrentAccountRepository;
+        this.userRepository = userRepository;
+ 
+    }
+ 
+    @Override
+    public void execute(String name,
+                        String surname,
+                        String dateOfBirth,
+                        String email,
+                        String password) throws IOException, UserAlreadyExistsException {
+        if (checkUserExists(email)) {
+            throw new UserAlreadyExistsException();
+        }
+        this.userRepository.create(name,
+                                   surname,
+                                   dateOfBirth,
+                                   email,
+                                   password);
+        this.basicCurrentAccountRepository.createBasicCurrentAccount(email);
+ 
+    }
+ 
+ 
+    private User getUser(String email) throws IOException {
+        return this.userRepository.get(email);
+    }
+ 
+    private boolean checkUserExists(String email) throws IOException {
+        return this.userRepository.checkIfUserExists(email);
+    }
+ 
+}
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.core.exceptions.UserAlreadyExistsException;
+ 
+import java.io.IOException;
+ 
+public interface ICreateBasicCurrentAccountCommand {
+    void execute(String name,
+                 String surname,
+                 String dateOfBirth,
+                 String email,
+                 String password) throws IOException, UserAlreadyExistsException;
+}
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+public interface IMakeDepositCommand {
+ 
+ 
+    void execute(String email,
+                 Money balance,
+                 Money amount) throws IOException, BasicCurrentAccountDoesNotExistsException;
+}
+ 
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.WithdrawalOverTheBalanceException;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+public interface IMakeWithdrawalCommand {
+    void execute(String email,
+                 Money balance,
+                 Money amount)
+    throws IOException, WithdrawalOverTheBalanceException, BasicCurrentAccountDoesNotExistsException;
+ 
+ 
+}
+ 
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.application.domain.accounts.Account;
+import com.leg.banking.application.domain.accounts.BasicCurrentAccount;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.application.domain.transactions.ITransactionRepository;
+import com.leg.banking.application.domain.transactions.Transaction;
+import com.leg.banking.application.domain.transactions.TransactionType;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.Date;
+ 
+public class MakeDepositCommand implements IMakeDepositCommand {
+    final IAccountRepository basicCurrentAccountRepository;
+    final ITransactionRepository transactionRepository;
+ 
+ 
+    public MakeDepositCommand(IAccountRepository basicCurrentAccountRepository,
+                              ITransactionRepository transactionRepository) {
+        this.basicCurrentAccountRepository = basicCurrentAccountRepository;
+ 
+        this.transactionRepository = transactionRepository;
+    }
+ 
+ 
+    @Override
+    public void execute(String email,
+                        Money balance,
+                        Money amount)
+    throws IOException, BasicCurrentAccountDoesNotExistsException {
+        Account account = new BasicCurrentAccount(email,
+                                                  balance);
+        Account accountAfterDeposit = account.deposit(amount);
+        this.saveData(email,
+                      accountAfterDeposit.getBalance()
+                                         .getAmount(),
+                      amount.getAmount());
+    }
+ 
+    private void saveData(String email,
+                          BigDecimal newBalance,
+                          BigDecimal depositAmount) throws IOException {
+        basicCurrentAccountRepository.updateAccount(email,
+                                                    newBalance);
+        Date date = new Date();
+        transactionRepository.save(new Transaction(email,
+                                                   date.getTime(),
+                                                   newBalance.toString(),
+                                                   TransactionType.CSH,
+                                                   " ",
+                                                   depositAmount.toString(),
+                                                   "0"));
+    }
+}
+ 
+package com.leg.banking.application.domain.accounts.commands;
+ 
+import com.leg.banking.application.domain.accounts.Account;
+import com.leg.banking.application.domain.accounts.BasicCurrentAccount;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.WithdrawalOverTheBalanceException;
+import com.leg.banking.application.domain.transactions.ITransactionRepository;
+import com.leg.banking.application.domain.transactions.Transaction;
+import com.leg.banking.application.domain.transactions.TransactionType;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.Date;
+ 
+public class MakeWithdrawalCommand implements IMakeWithdrawalCommand {
+    final IAccountRepository basicCurrentAccountRepository;
+    final ITransactionRepository transactionRepository;
+ 
+ 
+    public MakeWithdrawalCommand(IAccountRepository basicCurrentAccountRepository,
+                                 ITransactionRepository transactionRepository) {
+        this.basicCurrentAccountRepository = basicCurrentAccountRepository;
+ 
+        this.transactionRepository = transactionRepository;
+    }
+ 
+ 
+    private void saveData(String email,
+                          BigDecimal newBalance,
+                          BigDecimal withdrawalAmount) throws IOException {
+        basicCurrentAccountRepository.updateAccount(email,
+                                                    newBalance);
+        Date date = new Date();
+        transactionRepository.save(new Transaction(email,
+                                                   date.getTime(),
+                                                   newBalance.toString(),
+                                                   TransactionType.CSH,
+                                                   " ",
+                                                   "0",
+                                                   withdrawalAmount.toString()));
+    }
+ 
+    @Override
+    public void execute(String email,
+                        Money balance,
+                        Money amount)
+    throws IOException, WithdrawalOverTheBalanceException, BasicCurrentAccountDoesNotExistsException {
+        Account account = new BasicCurrentAccount(email,
+                                                  balance);
+        Account accountAfterWithdrawal = account.withdraw(amount);
+        this.saveData(email,
+                      accountAfterWithdrawal.getBalance()
+                                            .getAmount(),
+                      amount.getAmount());
+    }
+}
+ 
+package com.leg.banking.application.domain.accounts.querries;
+ 
+import com.leg.banking.application.domain.accounts.Account;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+ 
+import java.io.IOException;
+ 
+public class GetAccountOfTheLoggedInUserQuery implements IGetAccountOfTheLoggedInUserQuery {
+ 
+    ISessionRepository sessionRepository;
+    IAccountRepository basicCurrentAccountRepository;
+ 
+    public GetAccountOfTheLoggedInUserQuery(ISessionRepository sessionRepository,
+                                       IAccountRepository basicCurrentAccountRepository) {
+        this.sessionRepository = sessionRepository;
+        this.basicCurrentAccountRepository = basicCurrentAccountRepository;
+    }
+ 
+ 
+    public Account execute()
+    throws IOException, NoUserLoggedInException, BasicCurrentAccountDoesNotExistsException {
+        return basicCurrentAccountRepository.getAccount(getEmail());
+    }
+ 
+ 
+    private String getEmail() throws IOException, NoUserLoggedInException {
+        return sessionRepository.getEmailOfLoggedUser();
+    }
+ 
+}
+ 
+ 
+package com.leg.banking.application.domain.accounts.querries;
+ 
+import com.leg.banking.application.domain.accounts.Account;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+ 
+import java.io.IOException;
+ 
+public interface IGetAccountOfTheLoggedInUserQuery {
+ 
+    Account execute()
+    throws IOException, NoUserLoggedInException, BasicCurrentAccountDoesNotExistsException;
+}
+ 
+ 
+package com.leg.banking.application.domain.accounts;
+ 
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+public abstract class Account {
+ 
+ 
+    final protected String email;
+    final protected Money  balance;
+ 
+    /**
+     *
+     * @param email     id of the owner of account
+     * @param balance   current value of the account
+     */
+    public Account(String email,
+                   Money balance ) {
+        this.balance = balance;
+        this.email = email;
+    }
+ 
+ 
+    public abstract Account deposit(Money amount) throws IOException;
+ 
+    public abstract Account withdraw(Money amount) throws IOException;
+ 
+ 
+    public Money getBalance() {
+        return balance;
+    }
+ 
+    public String getEmail() {
+        return email;
+    }
+ 
+ 
+}
+ 
+package com.leg.banking.application.domain.accounts;
+ 
+import com.leg.banking.core.exceptions.WithdrawalOverTheBalanceException;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+ 
+public class BasicCurrentAccount extends Account {
+ 
+    public BasicCurrentAccount(String email,
+                               Money balance ) {
+        super(email,
+              balance );
+    }
+ 
+    @Override
+    public Account deposit(Money amount) throws IOException {
+ 
+        Money myBalance = this.balance.add(amount);
+ 
+        return new BasicCurrentAccount(email,
+                                       myBalance);
+ 
+    }
+ 
+    @Override
+    public Account withdraw(Money amount) throws WithdrawalOverTheBalanceException {
+ 
+        Money myBalance = this.balance.subtract(amount);
+        if (myBalance.isNegative()) {
+            throw new WithdrawalOverTheBalanceException();
+        }
+        return new BasicCurrentAccount(email,
+                                       myBalance);
+    }
+}
+package com.leg.banking.application.domain.accounts;
+ 
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+ 
+import java.io.IOException;
+import java.math.BigDecimal;
+ 
+public interface IAccountRepository {
+    void createBasicCurrentAccount(String email) throws IOException;
+ 
+    Account getAccount(String email) throws IOException, BasicCurrentAccountDoesNotExistsException;
+ 
+    void updateAccount(String email,
+                       BigDecimal newBalance)
+    throws IOException, BasicCurrentAccountDoesNotExistsException;
+ 
+}
+package com.leg.banking.application.domain.accounts;
+ 
+import com.leg.banking.core.exceptions.CreditCardWithdrawalOverTheLimitException;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+ 
+//these credit cards have the same interest Rate . model.Bank decides  about it
+public class PremiumCreditCardAccount extends Account {
+ 
+    /*
+ 
+    N
+    o
+    t
+ 
+    i
+    m
+    p
+    l
+    e
+    m
+    e
+    n
+    t
+    e
+    d
+ 
+    y
+    e
+    t
+ 
+ 
+ 
+ 
+ 
+     */
+ 
+    //balance what customer owns. if Balance is above 0 customer owns money. If balance is below zero customer overpaid.
+    //deposit means repaying the credit card
+    //withdraw means increasing the balance to repay later in the future
+    //annual interestRate it is integer value. For example 20% is 20.
+ 
+    private Money latePaymentFee;
+    private Money creditLimit;
+    private int   annualInterestRate;
+ 
+    public PremiumCreditCardAccount(String email,
+                                    Money balance,
+                                    Money latePaymentFee,
+                                    Money creditLimit,
+                                    int annualInterestRate) {
+        super(email,
+              balance);
+        this.latePaymentFee = latePaymentFee;
+        this.creditLimit = creditLimit;
+        this.annualInterestRate = annualInterestRate;
+    }
+ 
+    public Money getLatePaymentFee() {
+        return latePaymentFee;
+    }
+ 
+    public void setLatePaymentFee(Money latePaymentFee) {
+        this.latePaymentFee = latePaymentFee;
+    }
+ 
+    public int getAnnualInterestRate() {
+        return annualInterestRate;
+    }
+ 
+    public void setAnnualInterestRate(int annualInterestRate) {
+        this.annualInterestRate = annualInterestRate;
+    }
+ 
+    public Money getCreditLimit() {
+        return creditLimit;
+    }
+ 
+    public void setCreditLimit(Money creditLimit) {
+        this.creditLimit = creditLimit;
+    }
+ 
+    @Override
+    public Account deposit(Money amount) {
+        Money myBalance = this.balance.subtract(amount);
+        return new BasicCurrentAccount(email,
+                                       myBalance);
+    }
+ 
+    @Override
+    public Account withdraw(Money amount) {
+        Money myBalance = this.balance.add(amount);
+        if (myBalance.getAmount()
+                     .compareTo(creditLimit.getAmount()) > 0) {
+            throw new CreditCardWithdrawalOverTheLimitException();
+        }
+        return new PremiumCreditCardAccount(this.email,
+                                            myBalance,
+                                            this.latePaymentFee,
+                                            this.creditLimit,
+                                            this.annualInterestRate);
+    }
+ 
+ 
+}
+ 
+//package com.leg.banking.application.domain.accounts;
+//
+//public class SavingAccount extends Account{
+//
+//    // integer number for percentage for ex. 20% we input 20
+//    private int interestRate;
+//
+//    public SavingAccount(String email, long balance, int interestRate) {
+//        super(email,balance);
+//    }
+//
+//    @Override
+//    public void deposit(long amount) {
+//
+//    }
+//
+//    @Override
+//    public void withdraw(long amount) {
+//
+//    }
+//}
+ 
+    /*
+ 
+    N
+    o
+    t
+ 
+    i
+    m
+    p
+    l
+    e
+    m
+    e
+    n
+    t
+    e
+    d
+ 
+    y
+    e
+    t
+ 
+ 
+ 
+ 
+ 
+     */
+ 
+//package com.leg.banking.application.domain.accounts;
+//
+//public class SavingAccount extends Account{
+//
+//    // integer number for percentage for ex. 20% we input 20
+//    private int interestRate;
+//
+//    public SavingAccount(String email, long balance, int interestRate) {
+//        super(email,balance);
+//    }
+//
+//    @Override
+//    public void deposit(long amount) {
+//
+//    }
+//
+//    @Override
+//    public void withdraw(long amount) {
+//
+//    }
+//}
+ 
+    /*
+ 
+    N
+    o
+    t
+ 
+    i
+    m
+    p
+    l
+    e
+    m
+    e
+    n
+    t
+    e
+    d
+ 
+    y
+    e
+    t
+ 
+ 
+ 
+ 
+ 
+     */
+ 
+package com.leg.banking.application.domain.authentication.commands;
+ 
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+import com.leg.banking.core.exceptions.WrongCredentialsProvidedToLogInException;
+ 
+import java.io.IOException;
+ 
+public interface ILogoutCommand {
+    void execute(String email,
+                 String password)
+    throws WrongCredentialsProvidedToLogInException, SpecificUserNotFoundException, IOException;
+ 
+ 
+}
+ 
+package com.leg.banking.application.domain.authentication.commands;
+ 
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+import com.leg.banking.application.domain.users.IUserRepository;
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+import com.leg.banking.core.exceptions.WrongCredentialsProvidedToLogInException;
+ 
+import java.io.IOException;
+ 
+public class LoginCommand implements ILoginCommand {
+    private final ISessionRepository sessionRepository;
+    private final IUserRepository userRepository;
+ 
+    public LoginCommand(ISessionRepository sessionRepository,
+                        IUserRepository userRepository) {
+        this.sessionRepository = sessionRepository;
+        this.userRepository = userRepository;
+    }
+ 
+    @Override
+    public void execute(String email,
+                        String password)
+    throws WrongCredentialsProvidedToLogInException, SpecificUserNotFoundException, IOException {
+ 
+        boolean isLoggedIn = userRepository.checkCredentials(email,
+                                                             password);
+        if (isLoggedIn) {
+            sessionRepository.loginSession(email);
+        } else {
+            throw new WrongCredentialsProvidedToLogInException();
+        }
+ 
+    }
+}
+ 
+package com.leg.banking.application.domain.authentication.commands;
+ 
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+import com.leg.banking.core.exceptions.MethodNotImplementedException;
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+import com.leg.banking.core.exceptions.WrongCredentialsProvidedToLogInException;
+ 
+import java.io.IOException;
+ 
+public class LogoutCommand implements ILogoutCommand {
+    private final ISessionRepository sessionRepository;
+ 
+ 
+    public LogoutCommand(ISessionRepository sessionRepository) {
+        this.sessionRepository = sessionRepository;
+    }
+ 
+    @Override
+    public void execute(String email,
+                        String password)
+    throws WrongCredentialsProvidedToLogInException, SpecificUserNotFoundException, IOException {
+ 
+        throw new MethodNotImplementedException();
+ 
+    }
+}
+package com.leg.banking.application.domain.authentication;
+ 
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.core.exceptions.WrongMatchEmailWithActiveSessionException;
+ 
+import java.io.IOException;
+ 
+public interface ISessionRepository {
+    //TODO: method must be used
+    boolean isSessionActive(String email)
+    throws IOException, WrongMatchEmailWithActiveSessionException;
+ 
+    void loginSession(String email) throws IOException;
+ 
+    void logoutUser() throws IOException;
+ 
+    String getEmailOfLoggedUser() throws IOException, NoUserLoggedInException;
+}
+package com.leg.banking.application.domain.authentication;
+ 
+ 
+import com.leg.banking.core.exceptions.WrongCredentialsProvidedToLogInException;
+ 
+import java.io.IOException;
+ 
+public interface IUserLoginService {
+    //boolean isSessionActive(String email) throws IOException;
+    void loginUser(String email,
+                   String password) throws IOException, WrongCredentialsProvidedToLogInException;
+ 
+    void logoutUser() throws IOException;
+    //String getEmailOfLoggedUser() throws IOException;
+}
+package com.leg.banking.application.domain.transactions.querries;
+ 
+import com.leg.banking.application.domain.transactions.ITransactionRepository;
+import com.leg.banking.application.domain.transactions.Transaction;
+ 
+import java.io.IOException;
+import java.util.List;
+ 
+public class GetTransactionsQuery implements IGetTransactionsQuery {
+ 
+    final ITransactionRepository transactionRepository;
+ 
+    public GetTransactionsQuery(ITransactionRepository transactionRepository) {
+        this.transactionRepository = transactionRepository;
+    }
+ 
+    @Override
+    public List<Transaction> execute(String email) throws IOException {
+        return this.transactionRepository.getAll(0,email);
+    }
+}
+package com.leg.banking.application.domain.transactions.querries;
+ 
+import com.leg.banking.application.domain.transactions.Transaction;
+ 
+import java.io.IOException;
+import java.util.List;
+ 
+public interface IGetTransactionsQuery {
+    List<Transaction>execute(String email) throws IOException;
+}
+package com.leg.banking.application.domain.transactions;
+ 
+import java.io.IOException;
+import java.util.List;
+ 
+public interface ITransactionRepository {
+    /**
+     * @param index      index of the property to search
+     * @param lookingFor what to look for
+     * @return List<List < String>>
+     * @throws IOException Exception thrown
+     */
+    List<Transaction> getAll(int index,String lookingFor) throws IOException;
+ 
+    void save(Transaction transaction) throws IOException;
+}
+ 
+package com.leg.banking.application.domain.transactions;
+ 
+import java.text.DateFormat;
+import java.util.Date;
+ 
+import static java.util.Locale.UK;
+ 
+public class Transaction {
+ 
+    final protected String          email;
+    final protected long            date;
+    final protected String          balance;
+    final protected TransactionType transactionType;
+    final protected String          description;
+    final protected String          in;
+    final protected String          out;
+ 
+    /**
+     * @param email           id of the account's owner
+     * @param date            when transaction was taking a place
+     * @param balance         after the transaction  balance
+     * @param transactionType abbreviation is  used for the type  of transaction
+     * @param description     reference if needed
+     * @param in              amount incoming  from the account
+     * @param out             amount outgoing from the account
+     */
+    public Transaction(String email,
+                       long date,
+                       String balance,
+                       TransactionType transactionType,
+                       String description,
+                       String in,
+                       String out) {
+        this.email = email;
+        this.date = date;
+        this.balance = balance;
+        this.transactionType = transactionType;
+        this.description = description;
+        this.in = in;
+        this.out = out;
+    }
+ 
+    public String getDate() {
+        DateFormat dateFormat = DateFormat.getDateInstance(DateFormat.DEFAULT,
+                                                           UK);;
+                                                          return  dateFormat.format(new Date(date));
+    }
+ 
+    public String getBalance() {
+        return this.balance;
+    }
+ 
+    public TransactionType getTransactionType() {
+        return this.transactionType;
+    }
+ 
+    public String getDescription() {
+        return this.description;
+    }
+ 
+    public String getIn() {
+        return this.in;
+    }
+ 
+    public String getOut() {
+        return   "-"+this.out;
+    }
+ 
+    @Override
+    public String toString() {
+ 
+ 
+ 
+        return getDate() + " " + getBalance() + " " + getTransactionType() + " " + getDescription()+  " " + getIn() + " " +"  "+ getOut()   ;
+    }
+ 
+    public String[] fieldsToArray() {
+        return new String[]{this.email, String.valueOf(date), balance, String.valueOf(transactionType), description, in, out};
+    }
+}
+package com.leg.banking.application.domain.transactions;
+ 
+public enum TransactionType {
+    CSH,// cash paid into your bank account
+    FPI,// faster payment inward
+    FPO, //faster payment outward
+    CHG ,//charge
+    CASHPOINT,//  withdrawal from atm
+    BGC //bank giro credit  incoming money for example salary
+ 
+}
+package com.leg.banking.application.domain.users;
+ 
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+ 
+import java.io.IOException;
+ 
+public interface IUserRepository {
+    void create(String name,
+                String surname,
+                String dateOfBirth,
+                String email,
+                String password) throws IOException;
+ 
+    boolean checkIfUserExists(String email) throws IOException;
+ 
+    boolean checkCredentials(String email,
+                             String password) throws IOException;
+ 
+    User get(String email) throws IOException, SpecificUserNotFoundException;
+ 
+ 
+}
+package com.leg.banking.application.domain.users;
+ 
+public class User {
+ 
+    final private String name;
+    final private String surname;
+    final private String dateOfBirth;
+    final private String email;
+    final private String password;
+ 
+    public User(String name,
+                String surname,
+                String dateOfBirth,
+                String email,
+                String password) {
+        this.name = name;
+        this.surname = surname;
+        this.dateOfBirth = dateOfBirth;
+        this.email = email;
+        this.password = password;
+    }
+ 
+ 
+    public String getName() {
+        return name;
+    }
+ 
+ 
+    public String getSurname() {
+        return surname;
+    }
+ 
+ 
+    public String getDateOfBirth() {
+        return dateOfBirth;
+    }
+ 
+ 
+    public String getEmail() {
+        return email;
+    }
+ 
+ 
+    public String getPassword() {
+        return password;
+    }
+ 
+ 
+}
+package com.leg.banking.application.domain.valueObject;
+ 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+ 
+/**
+*
+*/
+public final class Money {
+ 
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
+    private final        BigDecimal   amount;
+ 
+    public Money(String amount) {
+        this.amount = rounded(new BigDecimal(amount));
+ 
+ 
+    }
+ 
+ 
+    public BigDecimal getAmount() {
+        return rounded(this.amount);
+    }
+ 
+ 
+ 
+    public Money add(Money amount) {
+        return new Money(this.amount.add(amount.getAmount())
+                                    .toString());
+    }
+ 
+    public Money subtract(Money amount) {
+        return new Money(this.amount.subtract(amount.getAmount())
+                                    .toString());
+    }
+ 
+ 
+    public boolean isPositiveOrAZero() {
+        return this.amount.compareTo(BigDecimal.ZERO) >= 0;
+    }
+ 
+   public boolean isNegative() {
+        return this.amount.compareTo(BigDecimal.ZERO) < 0;
+    }
+ 
+ 
+    private BigDecimal rounded(BigDecimal number) {
+        return number.setScale(2,
+                               ROUNDING_MODE);
+    }
+}
+package com.leg.banking.application.domain;
+ 
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+import com.leg.banking.application.domain.users.IUserRepository;
+import com.leg.banking.application.domain.users.User;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+public class DashboardService implements IDashboardService {
+    ISessionRepository sessionRepository;
+    IUserRepository    userRepository;
+    IAccountRepository basicCurrentAccountRepository;
+ 
+    public DashboardService(ISessionRepository sessionRepository,
+                            IUserRepository userRepository,
+                            IAccountRepository basicCurrentAccountRepository) {
+        this.sessionRepository = sessionRepository;
+        this.userRepository = userRepository;
+        this.basicCurrentAccountRepository = basicCurrentAccountRepository;
+    }
+ 
+ 
+    public String getEmailOfTheLoggedUser() throws IOException, NoUserLoggedInException {
+        return this.sessionRepository.getEmailOfLoggedUser();
+    }
+ 
+ 
+    public String getNameOfTheLoggedInUser() throws IOException, NoUserLoggedInException {
+        User user = this.userRepository.get(this.getEmailOfTheLoggedUser());
+        return user.getName() + " " + user.getSurname();
+    }
+ 
+ 
+    public Money getBalanceOfTheCurrentAccount()
+    throws IOException, BasicCurrentAccountDoesNotExistsException {
+        return basicCurrentAccountRepository.getAccount(this.getEmailOfTheLoggedUser())
+                                            .getBalance();
+    }
+ 
+ 
+}
+package com.leg.banking.application.domain;
+ 
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.io.IOException;
+ 
+public interface IDashboardService {
+    String getEmailOfTheLoggedUser() throws IOException, NoUserLoggedInException;
+ 
+    String getNameOfTheLoggedInUser() throws IOException, NoUserLoggedInException;
+ 
+    Money getBalanceOfTheCurrentAccount()
+    throws IOException, BasicCurrentAccountDoesNotExistsException;
+ 
+ 
+}
+package com.leg.banking.core.exceptions;
+ 
+public class BasicCurrentAccountDoesNotExistsException extends RuntimeException {
+    public BasicCurrentAccountDoesNotExistsException() {
+        super();
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class CreditCardWithdrawalOverTheLimitException extends RuntimeException {
+    public CreditCardWithdrawalOverTheLimitException() {
+        super();
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class MethodNotImplementedException extends RuntimeException {
+    public MethodNotImplementedException() {
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class NoUserLoggedInException extends RuntimeException {
+    public NoUserLoggedInException() {
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class RowNoFoundException extends RuntimeException {}
+ 
+ 
+package com.leg.banking.core.exceptions;
+/*
+Before calling the controller you probably forgot to replace the NullController with  setController method
+*/
+ 
+public class SpecificControllerNotExistsException extends RuntimeException {
+    public SpecificControllerNotExistsException() {
+        super();
+    }
+}
+ 
+package com.leg.banking.core.exceptions;
+ 
+public class SpecificUserNotFoundException extends RuntimeException {
+    public SpecificUserNotFoundException() {
+        super();
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class UserAlreadyExistsException extends RuntimeException {
+    public UserAlreadyExistsException() {
+        super();
+    }
+}
+ 
+package com.leg.banking.core.exceptions;
+ 
+public class WithdrawalOverTheBalanceException extends RuntimeException {
+    public WithdrawalOverTheBalanceException() {
+        super();
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class WrongCredentialsProvidedToLogInException extends RuntimeException {
+    public WrongCredentialsProvidedToLogInException() {
+    }
+}
+package com.leg.banking.core.exceptions;
+ 
+public class WrongMatchEmailWithActiveSessionException extends RuntimeException {
+    public WrongMatchEmailWithActiveSessionException() {
+        super();
+    }
+}
+ 
+package com.leg.banking.core;
+ 
+import com.leg.banking.core.exceptions.RowNoFoundException;
+ 
+import java.io.*;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+ 
+ 
+public class FileStorage implements IDataSource {
+    private final Path path;
+ 
+    public FileStorage(Path filePath) throws IOException {
+        this.path = filePath;
+        System.out.println(path.getParent());
+        if (!Files.exists(filePath,
+                          LinkOption.NOFOLLOW_LINKS)) {
+            try {
+                Files.createDirectory(filePath.getParent());
+            } catch (FileAlreadyExistsException ignored) {
+            }
+            Files.createFile(filePath);
+        }
+ 
+    }
+ 
+ 
+    public void addRow(List<String> row) throws IOException {
+        String line = "";
+        for (String element : row) {
+            line = line.concat(element + " ");
+        }
+        line = line + System.lineSeparator();
+        try (FileWriter fw = new FileWriter(this.path.toFile(),
+                                            true)) {
+            fw.write(line);
+        }
+    }
+ 
+ 
+    //-------------------------------------------------------------------------------------
+    public String[] getRow(int index,
+                           String lookingFor) throws IOException, RowNoFoundException {
+        try (FileReader fr = new FileReader(path.toFile()); BufferedReader bufferedReader = new BufferedReader(fr)
+ 
+        ) {
+            String myLine;
+            while ((myLine = bufferedReader.readLine()) != null) {
+                String[] myArray      = myLine.split(" ");
+                String   mySearchable = myArray[index];
+                if (mySearchable.equals(lookingFor)) {
+                    return myArray;
+                }
+            }
+            throw new RowNoFoundException();
+        }
+    }
+ 
+ 
+    public void updateRow(int index,
+                          String lookingFor,
+                          int indexOfUpdatable,
+                          String newData) throws IOException, RowNoFoundException {
+        int                indexToRemember = -1;
+        List<List<String>> raws            = this.getAllRows();
+        for (int i = 0; i < raws.size(); i++) {
+            List<String> raw = raws.get(i);
+            if (raw.get(index)
+                   .equals(lookingFor)) {
+                indexToRemember = i;
+                break;
+            }
+        }
+        if (indexToRemember == -1) {
+            throw new RowNoFoundException();
+        }
+ 
+        List<String> myRawToUpdate = raws.get(indexToRemember);
+        myRawToUpdate.set(indexOfUpdatable,
+                          newData);
+        this.deleteContent();
+        for (List<String> raw : raws) {
+            this.addRow(raw);
+        }
+ 
+ 
+    }
+ 
+    public List<List<String>> getAllRows() throws IOException {
+        List<List<String>> myList = new ArrayList<>();
+        try (FileReader fr = new FileReader(this.path.toFile()); BufferedReader bufferedReader = new BufferedReader(fr)) {
+            String myLine;
+            while ((myLine = bufferedReader.readLine()) != null) {
+                String[]     myTemp     = myLine.split(" ");
+                List<String> myTempList = new ArrayList<>(Arrays.asList(myTemp));
+                myList.add(myTempList);
+            }
+ 
+        }
+        return myList;
+    }
+ 
+ 
+    public void removeRow(int index,
+                          String lookingFor) throws IOException, RowNoFoundException {
+        List<ArrayList<String>> myList  = new ArrayList<>();
+        boolean                 myFound = false;
+        try (FileReader fr = new FileReader(path.toFile()); BufferedReader bufferedReader = new BufferedReader(fr)
+ 
+        ) {
+ 
+            String myLine;
+            while ((myLine = bufferedReader.readLine()) != null) {
+                String[] myTemp       = myLine.split(" ");
+                String   mySearchable = myTemp[index];
+                if (mySearchable.equals(lookingFor)) {
+                    myFound = true;
+                } else {
+                    myList.add(new ArrayList<>(Arrays.asList(myTemp)));
+                }
+            }
+            if (!myFound) {
+                throw new RowNoFoundException();
+            }
+ 
+        }
+ 
+        this.deleteContent();
+        try (Writer fileWriter = new FileWriter(this.path.toFile(),
+                                                false)
+ 
+        ) {
+            for (ArrayList<String> line : myList) {
+                String toSave = String.join(" ",
+                                            line);
+                fileWriter.write(toSave + System.lineSeparator());
+            }
+ 
+        }
+    }
+ 
+    public void deleteContent() throws IOException {
+        new FileWriter(this.path.toFile()).close();
+    }
+ 
+    @Override
+    public List<List<String>> getAllRows(int index,
+                                         String lookingFor) throws IOException {
+        List<List<String>> myList = new ArrayList<>();
+        try (FileReader fr = new FileReader(this.path.toFile()); BufferedReader bufferedReader = new BufferedReader(fr)) {
+            String myLine;
+ 
+            while ((myLine = bufferedReader.readLine()) != null) {
+                String[] myTemp       = myLine.split(" ");
+                String   mySearchable = myTemp[index];
+                if (mySearchable.equals(lookingFor)) {
+                    myList.add(new ArrayList<>(Arrays.asList(myTemp)));
+                }
+ 
+            }
+ 
+        }
+        return myList;
+    }
+ 
+}
+ 
+ 
+package com.leg.banking.core;
+ 
+import com.leg.banking.core.exceptions.RowNoFoundException;
+ 
+import java.io.IOException;
+import java.util.List;
+ 
+public interface IDataSource {
+ 
+    /**
+     * @param row is a List  of elements to add
+     * @throws IOException exception thrown
+     */
+    void addRow(List<String> row) throws IOException;
+ 
+    /**
+     * @param index      index of the property to search
+     * @param lookingFor what to look for
+     * @return String[]  of properties
+     */
+ 
+    String[] getRow(int index,
+                    String lookingFor) throws IOException, RowNoFoundException;
+ 
+ 
+    /**
+     * @param index            index of the property to search
+     * @param lookingFor       what to look for
+     * @param indexOfUpdatable index of the property to  update
+     * @param newData          new data to update with
+     * @throws IOException thrown  exception
+     */
+    void updateRow(int index,
+                   String lookingFor,
+                   int indexOfUpdatable,
+                   String newData) throws IOException, RowNoFoundException;
+ 
+    List<List<String>> getAllRows() throws IOException;
+ 
+ 
+    /**
+     * @param index      index of the property to search
+     * @param lookingFor what to look for
+     * @throws IOException         exception thrown
+     * @throws RowNoFoundException thrown if row Not Found
+     */
+    void removeRow(int index,
+                   String lookingFor) throws IOException, RowNoFoundException;
+ 
+    void deleteContent() throws IOException;
+ 
+    /**
+     * @param index      index of the property to search
+     * @param lookingFor what to look for
+     * @return List<List < String>>
+     * @throws IOException Exception thrown
+     */
+    List<List<String>> getAllRows(int index,
+                                  String lookingFor) throws IOException;
+ 
+}
+package com.leg.banking.persistence;
+ 
+import com.leg.banking.application.domain.accounts.Account;
+import com.leg.banking.application.domain.accounts.BasicCurrentAccount;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.application.domain.valueObject.Money;
+import com.leg.banking.core.IDataSource;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.RowNoFoundException;
+ 
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Arrays;
+ 
+public class BasicAccountRepository implements IAccountRepository {
+ 
+ 
+    private final IDataSource dataSource;
+ 
+    public BasicAccountRepository(IDataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+ 
+ 
+    @Override
+    public void createBasicCurrentAccount(String email) throws IOException {
+        dataSource.addRow(new ArrayList<>(Arrays.asList(email,
+                                                        "0")));
+    }
+ 
+    //TODO There might be no such email and we have error here
+    @Override
+    public Account getAccount(String email)
+    throws IOException, BasicCurrentAccountDoesNotExistsException {
+        try {
+            String[] myRow = dataSource.getRow(0,
+                                               email);
+            return new BasicCurrentAccount(myRow[0],
+                                           new Money(new BigDecimal(myRow[1]).toString()));
+        } catch (RowNoFoundException e) {
+            throw new BasicCurrentAccountDoesNotExistsException();
+        }
+    }
+ 
+ 
+    @Override
+    public void updateAccount(String email,
+                              BigDecimal newBalance)
+    throws IOException, BasicCurrentAccountDoesNotExistsException {
+        try {
+            this.dataSource.updateRow(0,
+                                      email,
+                                      1,
+                                      newBalance.toString());
+ 
+        } catch (RowNoFoundException e) {
+            throw new BasicCurrentAccountDoesNotExistsException();
+        }
+ 
+ 
+    }
+ 
+ 
+}
+ 
+package com.leg.banking.persistence;
+ 
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+import com.leg.banking.core.IDataSource;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.core.exceptions.WrongMatchEmailWithActiveSessionException;
+ 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+ 
+public class SessionRepository implements ISessionRepository {
+    final long        millisAfterToLogout;
+    final IDataSource dataSource;
+ 
+   public SessionRepository(long millisAfterToLogout,
+                             IDataSource dataSource) {
+        this.millisAfterToLogout = millisAfterToLogout;
+        this.dataSource = dataSource;
+    }
+ 
+    public boolean isSessionActive(String email)
+    throws IOException, WrongMatchEmailWithActiveSessionException {
+        String[] line = this.dataSource.getRow(0,
+                                               email);
+        String emailId = line[0];
+        long   timer   = Long.parseLong(line[1]);
+ 
+        if (email.equals(emailId)) {
+            return timer + millisAfterToLogout > System.currentTimeMillis();
+        } else {
+            throw new WrongMatchEmailWithActiveSessionException();
+        }
+    }
+ 
+    public void loginSession(String email) throws IOException {
+        this.dataSource.deleteContent();
+ 
+        this.dataSource.addRow(new ArrayList<String>(Arrays.asList(email,
+                                                                   this.getMilliseconds())));
+    }
+ 
+    public void logoutUser() throws IOException {
+        this.dataSource.deleteContent();
+    }
+ 
+    public String getEmailOfLoggedUser() throws IOException, NoUserLoggedInException {
+ 
+        List<List<String>> lines = this.dataSource.getAllRows();
+        if (lines.size() == 1) {
+            return getEmail(lines.get(0));
+        }
+        throw new NoUserLoggedInException();
+    }
+ 
+ 
+    private String getEmail(List<String> line) {
+        return line.get(0);
+    }
+ 
+    private String getMilliseconds() {
+        return Long.toString(System.currentTimeMillis());
+    }
+}
+package com.leg.banking.persistence;
+ 
+import com.leg.banking.application.domain.transactions.ITransactionRepository;
+import com.leg.banking.application.domain.transactions.Transaction;
+import com.leg.banking.application.domain.transactions.TransactionType;
+import com.leg.banking.core.IDataSource;
+ 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+ 
+public class TransactionRepository implements ITransactionRepository {
+    final IDataSource dataSource;
+ 
+ 
+    public TransactionRepository(IDataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+ 
+    @Override
+    public List<Transaction> getAll(int index,
+                                    String lookingFor) throws IOException {
+        List<Transaction> transactions = new ArrayList<>();
+ 
+        List<List<String>> data = this.dataSource.getAllRows(index,
+                                                             lookingFor);
+        for (List<String> line : data) {
+//TODO: description to make working
+            transactions.add(new Transaction(line.get(0),
+                                             Long.parseLong(line.get(1)),
+                                             line.get(2),
+                                             TransactionType.valueOf(line.get(3)),
+                                             line.get(4),
+                                             line.get(6) ,
+                                             line.get(7)));
+        }
+ 
+        return transactions;
+ 
+    }
+ 
+    @Override
+    public void save(Transaction transaction) throws IOException {
+        dataSource.addRow(new ArrayList<>(Arrays.asList(transaction.fieldsToArray())));
+    }
+}
+package com.leg.banking.persistence;
+ 
+import com.leg.banking.application.domain.users.IUserRepository;
+import com.leg.banking.application.domain.users.User;
+import com.leg.banking.core.IDataSource;
+import com.leg.banking.core.exceptions.RowNoFoundException;
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+ 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+ 
+public class UserRepository implements IUserRepository {
+    private final IDataSource dataSource;
+ 
+    public UserRepository(IDataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+ 
+ 
+    public void create(String name,
+                       String surname,
+                       String dateOfBirth,
+                       String email,
+                       String password) throws IOException {
+        dataSource.addRow(new ArrayList<String>(Arrays.asList(name,
+                                                              surname,
+                                                              dateOfBirth,
+                                                              email,
+                                                              password)));
+ 
+    }
+ 
+    /**
+     * @param email
+     * @return if user  with such email exists then method  returns true
+     * @throws IOException if i/o to the file error
+     */
+ 
+    public boolean checkIfUserExists(String email) throws IOException {
+        try {
+            User user = this.get(email);
+            return true;
+        } catch (SpecificUserNotFoundException e) {
+            return false;
+        }
+ 
+    }
+ 
+    /**
+     * @param email
+     * @param password
+     * @return true if password and login is correct  otherwise false
+     * @throws SpecificUserNotFoundException
+     * @throws IOException                   if i/o to the file error
+     */
+ 
+    public boolean checkCredentials(String email,
+                                    String password)
+    throws SpecificUserNotFoundException, IOException {
+        User user = this.get(email);
+        return user.getPassword()
+                   .equals(password);
+    }
+ 
+    public User get(String email) throws IOException {
+        try {
+            String[] temp = dataSource.getRow(3,
+                                              email);
+            return new User(temp[0],
+                            temp[1],
+                            temp[2],
+                            temp[3],
+                            temp[4]);
+        } catch (RowNoFoundException e) {
+            throw new SpecificUserNotFoundException();
+        }
+ 
+    }
+}
+ 
+package com.leg.banking.presentation.basicCurrentAccount.deposit;
+ 
+import java.util.Scanner;
+ 
+public class BasicCurrentAccountDepositView {
+    Scanner scanner;
+ 
+    public BasicCurrentAccountDepositView() {
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public void welcomeMessage() {
+        System.out.println("\n\nDeposit Page\n\n----------------------------------");
+    }
+ 
+    public String getCustomerDeposit() {
+        System.out.println("How much would you like to deposit?");
+        return scanner.nextLine();
+    }
+ 
+    public void noUserLoggedInExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void iOExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void basicCurrentAccountDoesNotExistsExceptionMessage() {
+        System.out.println("\nError\n  There is no account for provided email");
+    }
+ 
+    public void successMessage() {
+        System.out.println("\nDeposit has been sent\n");
+    }
+}
+package com.leg.banking.presentation.basicCurrentAccount.withdrawal;
+ 
+import java.util.Scanner;
+ 
+public class BasicCurrentAccountWithdrawalView {
+    Scanner scanner;
+ 
+    public BasicCurrentAccountWithdrawalView() {
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public void welcomeMessage() {
+ 
+        System.out.println("\n\nWithdrawal Page\n\n----------------------------------");
+    }
+ 
+    public String getCustomerWithdrawal() {
+        System.out.println("How much would you like to withdraw?");
+        return scanner.nextLine();
+    }
+ 
+    public void noUserLoggedInExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void iOExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void basicCurrentAccountDoesNotExistsExceptionMessage() {
+        System.out.println("\nError\n  There is no account for provided email");
+    }
+ 
+    public void successMessage() {
+        System.out.println("\nSuccessful withdrawal\n");
+    }
+ 
+    public void withdrawalOverTheBalanceExceptionMessage() {
+        System.out.println("\nYou do not have enough money to withdraw that amount\n");
+    }
+}
+package com.leg.banking.presentation.basicCurrentAccount.withdrawal;
+ 
+import java.util.Scanner;
+ 
+public class BasicCurrentAccountWithdrawalView {
+    Scanner scanner;
+ 
+    public BasicCurrentAccountWithdrawalView() {
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public void welcomeMessage() {
+ 
+        System.out.println("\n\nWithdrawal Page\n\n----------------------------------");
+    }
+ 
+    public String getCustomerWithdrawal() {
+        System.out.println("How much would you like to withdraw?");
+        return scanner.nextLine();
+    }
+ 
+    public void noUserLoggedInExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void iOExceptionMessage() {
+        System.out.println("\nError\n");
+    }
+ 
+    public void basicCurrentAccountDoesNotExistsExceptionMessage() {
+        System.out.println("\nError\n  There is no account for provided email");
+    }
+ 
+    public void successMessage() {
+        System.out.println("\nSuccessful withdrawal\n");
+    }
+ 
+    public void withdrawalOverTheBalanceExceptionMessage() {
+        System.out.println("\nYou do not have enough money to withdraw that amount\n");
+    }
+}
+package com.leg.banking.presentation.createAccount;
+ 
+ 
+import java.util.Scanner;
+ 
+public class CreateBasicCurrentAccountView {
+    public Scanner scanner;
+    //private final OpenBasicCurrentAccountController openBasicCurrentAccountController;
+ 
+    public CreateBasicCurrentAccountView(
+            // OpenBasicCurrentAccountController openBasicCurrentAccountController
+                                        ) {
+        //this.openBasicCurrentAccountController = openBasicCurrentAccountController;
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public void welcomeMessage() {
+        System.out.println("Opening Current Account . Provide following data:");
+    }
+ 
+    public String emailPrompt() {
+        System.out.println("What is  your email?");
+        return scanner.nextLine();
+    }
+ 
+    public String surnamePrompt() {
+        System.out.println("What is  your surname?");
+        return scanner.nextLine();
+    }
+ 
+    public String namePrompt() {
+        System.out.println("What is your first name?");
+        return scanner.nextLine();
+    }
+ 
+    public String dateOfBirthPrompt() {
+        System.out.println("What is your date of birth?");
+        return scanner.nextLine();
+    }
+ 
+    public String passwordPrompt() {
+        System.out.println("What is your password?");
+        return scanner.nextLine();
+    }
+ 
+    public void userAlreadyExistsMessage() {
+        System.out.println("User already exists,\nNew account has NOT been created\n\n");
+ 
+    }
+ 
+    public void accountCreatedMessage() {
+        System.out.println("Account has been created. Log in to your bank account");
+ 
+    }
+ 
+ 
+    public void systemIOMessage() {
+        System.out.println("Input Output -system error");
+    }
+ 
+}
+package com.leg.banking.presentation.login;
+ 
+import java.util.Scanner;
+ 
+public class LoginView {
+    public Scanner scanner;
+ 
+    public LoginView() {
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public void loginWelcomeMessage() {
+        System.out.println("Login Page" + System.lineSeparator());
+    }
+ 
+    public String passwordPrompt() {
+        System.out.println("What is your password?" + System.lineSeparator());
+        return scanner.nextLine();
+    }
+ 
+    public String emailPrompt() {
+        System.out.println("What is your email?");
+        return scanner.nextLine();
+    }
+ 
+    public void loginSuccessfulMessage() {
+        System.out.println("Login successful.You are logged in. ");
+    }
+ 
+    public void wrongCredentialMessage() {
+        System.out.println("User email or password is wrong. Try again..." + System.lineSeparator());
+    }
+ 
+    public void systemIOMessage() {
+        System.out.println("Input Output -system error");
+    }
+ 
+    public void logoutMessage() {
+        System.out.println("You have been logout from the system.\n\n\n\n");
+    }
+ 
+    public void unKnownErrorMessage() {
+        System.out.println("Something went wrong");
+    }
+ 
+ 
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.application.domain.accounts.querries.IGetAccountOfTheLoggedInUserQuery;
+import com.leg.banking.application.domain.accounts.commands.IMakeDepositCommand;
+import com.leg.banking.application.domain.valueObject.Money;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.core.exceptions.SpecificControllerNotExistsException;
+import com.leg.banking.presentation.basicCurrentAccount.deposit.BasicCurrentAccountDepositView;
+ 
+import java.io.IOException;
+ 
+public class BasicCurrentAccountDepositController extends State {
+ 
+ 
+    private final BasicCurrentAccountDepositView    basicCurrentAccountDepositView = new BasicCurrentAccountDepositView();
+    private final IMakeDepositCommand               makeDepositCommand;
+    private final IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery;
+    private       State                             dashboardController;
+ 
+    /**
+     * @param makeDepositCommand  to update deposit
+     * @param getAccountOfTheLoggedInUserQuery if omitted default null created
+     */
+    public BasicCurrentAccountDepositController(IMakeDepositCommand makeDepositCommand,
+                                                IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery) {
+        this.makeDepositCommand = makeDepositCommand;
+        this.getAccountOfTheLoggedInUserQuery = getAccountOfTheLoggedInUserQuery;
+        this.dashboardController = new NullController();
+    }
+ 
+    /**
+     * @param dashboardController because of the circular dependency it is impossible
+     *                            to pass the controller through constructor
+     */
+    public void setDashboardController(State dashboardController) {
+        this.dashboardController = dashboardController;
+    }
+ 
+    private String getEmailOfTheLoggedInUser() throws IOException, NoUserLoggedInException {
+        return this.getAccountOfTheLoggedInUserQuery.execute()
+                                               .getEmail();
+    }
+ 
+    private Money getBalanceOfTheLoggedInUser() throws IOException, NoUserLoggedInException {
+        return this.getAccountOfTheLoggedInUserQuery.execute()
+                                               .getBalance();
+    }
+ 
+    @Override
+    public State displayMenu() {
+        if (dashboardController.isNull()) throw new SpecificControllerNotExistsException();
+        State myState = null;
+        basicCurrentAccountDepositView.welcomeMessage();
+        String deposit = basicCurrentAccountDepositView.getCustomerDeposit();
+ 
+        try {
+            String email = getEmailOfTheLoggedInUser();
+            makeDepositCommand.execute(email,
+                                       getBalanceOfTheLoggedInUser(),
+                                       new Money(deposit));
+ 
+            basicCurrentAccountDepositView.successMessage();
+            myState = dashboardController;
+        } catch (NoUserLoggedInException e) {
+            basicCurrentAccountDepositView.noUserLoggedInExceptionMessage();
+        } catch (BasicCurrentAccountDoesNotExistsException e) {
+            basicCurrentAccountDepositView.basicCurrentAccountDoesNotExistsExceptionMessage();
+        } catch (Exception exception) {
+            basicCurrentAccountDepositView.iOExceptionMessage();
+        }
+        return myState;
+    }
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+import com.leg.banking.application.domain.accounts.querries.IGetAccountOfTheLoggedInUserQuery;
+import com.leg.banking.application.domain.accounts.commands.IMakeWithdrawalCommand;
+import com.leg.banking.application.domain.valueObject.Money;
+import com.leg.banking.core.exceptions.BasicCurrentAccountDoesNotExistsException;
+import com.leg.banking.core.exceptions.SpecificControllerNotExistsException;
+import com.leg.banking.core.exceptions.WithdrawalOverTheBalanceException;
+import com.leg.banking.presentation.basicCurrentAccount.withdrawal.BasicCurrentAccountWithdrawalView;
+ 
+import java.io.IOException;
+ 
+public class BasicCurrentAccountWithdrawalController extends State {
+    private final BasicCurrentAccountWithdrawalView basicCurrentAccountWithdrawalView;
+    private final IMakeWithdrawalCommand            makeWithdrawalCommand;
+    private final IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery;
+    private       State                             dashboardController;
+ 
+    /**
+     * @param basicCurrentAccountWithdrawalView
+     * @param makeWithdrawalCommand
+     * @param getAccountOfTheLoggedInUserQuery
+     */
+    public BasicCurrentAccountWithdrawalController(BasicCurrentAccountWithdrawalView basicCurrentAccountWithdrawalView,
+                                                   IMakeWithdrawalCommand makeWithdrawalCommand,
+                                                   IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery) {
+        this.basicCurrentAccountWithdrawalView = basicCurrentAccountWithdrawalView;
+        this.makeWithdrawalCommand = makeWithdrawalCommand;
+        this.getAccountOfTheLoggedInUserQuery = getAccountOfTheLoggedInUserQuery;
+        this.dashboardController = new NullController();
+    }
+ 
+   /**
+     * @param dashboardController to replace the NullController the default one
+     */
+    public void setDashboardController(State dashboardController) {
+        this.dashboardController = dashboardController;
+    }
+ 
+    @Override
+    public State displayMenu() {
+        if (dashboardController.isNull()) throw new SpecificControllerNotExistsException();
+        State myState = null;
+        basicCurrentAccountWithdrawalView.welcomeMessage();
+        String withdrawal = basicCurrentAccountWithdrawalView.getCustomerWithdrawal();
+        try {
+            makeWithdrawalCommand.execute(getEmailOfTheLoggedInUser(),
+                                          getBalanceOfTheLoggedInUser(),
+                                          new Money(withdrawal));
+            basicCurrentAccountWithdrawalView.successMessage();
+            myState = dashboardController;
+        } catch (NoUserLoggedInException e) {
+            basicCurrentAccountWithdrawalView.noUserLoggedInExceptionMessage();
+        } catch (BasicCurrentAccountDoesNotExistsException e) {
+            basicCurrentAccountWithdrawalView.basicCurrentAccountDoesNotExistsExceptionMessage();
+ 
+        } catch (WithdrawalOverTheBalanceException e) {
+            basicCurrentAccountWithdrawalView.withdrawalOverTheBalanceExceptionMessage();
+        } catch (Exception exception) {
+            basicCurrentAccountWithdrawalView.iOExceptionMessage();
+        }
+        return myState;
+    }
+ 
+    private String getEmailOfTheLoggedInUser() throws IOException, NoUserLoggedInException {
+        return this.getAccountOfTheLoggedInUserQuery.execute()
+                                                    .getEmail();
+    }
+ 
+    private Money getBalanceOfTheLoggedInUser() throws IOException, NoUserLoggedInException {
+        return this.getAccountOfTheLoggedInUserQuery.execute()
+                                                    .getBalance();
+    }
+ 
+ 
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.application.domain.accounts.commands.ICreateBasicCurrentAccountCommand;
+import com.leg.banking.core.exceptions.SpecificControllerNotExistsException;
+import com.leg.banking.core.exceptions.UserAlreadyExistsException;
+import com.leg.banking.presentation.createAccount.CreateBasicCurrentAccountView;
+ 
+import java.io.IOException;
+ 
+public class CreateBasicCurrentAccountController extends State {
+    private final CreateBasicCurrentAccountView     createBasicCurrentAccountView;
+    private final ICreateBasicCurrentAccountCommand createBasicCurrentAccountCommand;
+    private       State                             welcomeController;
+ 
+    /**
+     * @param createBasicCurrentAccountView
+     * @param createBasicCurrentAccountCommand
+     */
+ 
+    public CreateBasicCurrentAccountController(CreateBasicCurrentAccountView createBasicCurrentAccountView,
+                                               ICreateBasicCurrentAccountCommand createBasicCurrentAccountCommand) {
+        this.welcomeController = new NullController();
+        this.createBasicCurrentAccountCommand = createBasicCurrentAccountCommand;
+        this.createBasicCurrentAccountView = createBasicCurrentAccountView;
+    }
+ 
+    public void setWelcomeController(State welcomeController) {
+        this.welcomeController = welcomeController;
+ 
+    }
+ 
+    private State createNewAccount(String name,
+                                   String surname,
+                                   String dateOfBirth,
+                                   String email,
+                                   String password) {
+        if (welcomeController.isNull()) throw new SpecificControllerNotExistsException();
+        try {
+            createBasicCurrentAccountCommand.execute(name,
+                                                     surname,
+                                                     dateOfBirth,
+                                                     email,
+                                                     password);
+            createBasicCurrentAccountView.accountCreatedMessage();
+ 
+        } catch (UserAlreadyExistsException e) {
+            createBasicCurrentAccountView.userAlreadyExistsMessage();
+        } catch (IOException e) {
+            createBasicCurrentAccountView.systemIOMessage();
+        }
+        return welcomeController;
+ 
+    }
+ 
+ 
+    @Override
+    public State displayMenu() {
+        createBasicCurrentAccountView.welcomeMessage();
+        String name        = createBasicCurrentAccountView.namePrompt();
+        String surname     = createBasicCurrentAccountView.surnamePrompt();
+        String dateOfBirth = createBasicCurrentAccountView.dateOfBirthPrompt();
+        String email       = createBasicCurrentAccountView.emailPrompt();
+        String password    = createBasicCurrentAccountView.passwordPrompt();
+        return createNewAccount(name,
+                                surname,
+                                dateOfBirth,
+                                email,
+                                password);
+    }
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.presentation.DashboardView;
+import com.leg.banking.application.domain.IDashboardService;
+import com.leg.banking.application.domain.valueObject.Money;
+import com.leg.banking.core.exceptions.NoUserLoggedInException;
+ 
+import java.io.IOException;
+ 
+public class DashboardController extends State {
+ 
+    private final IDashboardService dashboardService;
+    private final DashboardView dashboardView;
+    private final State             basicCurrentAccountDepositController;
+    private final State             basicCurrentAccountWithdrawalController;
+    private final State             loginController;
+    private final State             statementController;
+ 
+ 
+    public DashboardController(IDashboardService dashboardService,
+                               State basicCurrentAccountDepositController,
+                               State basicCurrentAccountWithdrawalController,
+                               State loginController,
+                               State statementController) {
+        this.dashboardService = dashboardService;
+        this.basicCurrentAccountDepositController = basicCurrentAccountDepositController;
+        this.basicCurrentAccountWithdrawalController = basicCurrentAccountWithdrawalController;
+        this.loginController = loginController;
+        this.statementController = statementController;
+        this.dashboardView = new DashboardView(this);
+ 
+    }
+ 
+    @Override
+    public State displayMenu() {
+        State myState  = new NullController();
+        int   response = dashboardView.displayMenu();
+        switch (response) {
+            case 1:
+                myState = basicCurrentAccountDepositController;
+                break;
+            case 2:
+                myState = basicCurrentAccountWithdrawalController;
+                break;
+            case 3:
+                myState= statementController;
+                break;
+            case 9:
+                myState = loginController;
+                break;
+        }
+        return myState;
+    }
+ 
+ 
+    public Money getBalanceOfTheCurrentAccount() {
+        Money money = null;
+        try {
+            money = dashboardService.getBalanceOfTheCurrentAccount();
+ 
+        } catch (IOException e) {
+            this.dashboardView.systemIOMessage();
+ 
+        } catch (Exception e) {
+            this.dashboardView.unKnownErrorMessage();
+ 
+        }
+        return money;
+    }
+ 
+    public String getNameOfTheLoggedInUser() {
+        try {
+            return dashboardService.getNameOfTheLoggedInUser();
+ 
+        } catch (NoUserLoggedInException e) {
+            this.dashboardView.noUserLoggedInMessage();
+            return "";
+        } catch (IOException e) {
+            this.dashboardView.systemIOMessage();
+            return "";
+ 
+        } catch (Exception e) {
+            this.dashboardView.unKnownErrorMessage();
+            return "";
+        }
+ 
+    }
+ 
+ 
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.presentation.login.LoginView;
+import com.leg.banking.application.domain.authentication.commands.ILoginCommand;
+import com.leg.banking.application.domain.authentication.commands.ILogoutCommand;
+import com.leg.banking.core.exceptions.SpecificControllerNotExistsException;
+import com.leg.banking.core.exceptions.SpecificUserNotFoundException;
+import com.leg.banking.core.exceptions.WrongCredentialsProvidedToLogInException;
+ 
+import java.io.IOException;
+ 
+public class LoginController extends State {
+    private final ILoginCommand  loginCommand;
+    private final ILogoutCommand logoutCommand;
+ 
+    private final LoginView loginView;
+    private       State     dashboardController;
+    private       State     welcomeController;
+ 
+ 
+    public LoginController(LoginView loginView,
+                           ILoginCommand loginCommand,
+                           ILogoutCommand logoutCommand) {
+        this.loginCommand = loginCommand;
+        this.logoutCommand = logoutCommand;
+        this.dashboardController = new NullController();
+        this.welcomeController = new NullController();
+        this.loginView = loginView;
+    }
+ 
+ 
+    /**
+     * @param welcomeController to replace the NullController (the default one)
+     */
+    public void setWelcomeController(State welcomeController) {
+        this.welcomeController = welcomeController;
+    }
+ 
+    /**
+     * @param dashboardController to replace the NullController (the default one)
+     */
+    public void setDashboardController(State dashboardController) {
+        this.dashboardController = dashboardController;
+    }
+ 
+    @Override
+    public State displayMenu() {
+ 
+        if (this.welcomeController.isNull()) throw new SpecificControllerNotExistsException();
+ 
+        if (this.dashboardController.isNull()) throw new SpecificControllerNotExistsException();
+ 
+        State myState = null;
+        this.loginView.loginWelcomeMessage();
+        String email    = loginView.emailPrompt();
+        String password = loginView.passwordPrompt();
+        boolean response = login(email,
+                                 password);
+        if (response) {
+            myState = this.dashboardController;
+        } else {
+            myState = this.welcomeController;
+        }
+        return myState;
+    }
+ 
+ 
+    private boolean login(String email,
+                          String password) {
+        try {
+            loginCommand.execute(email,
+                                 password);
+            this.loginView.loginSuccessfulMessage();
+            return true;
+        } catch (WrongCredentialsProvidedToLogInException | SpecificUserNotFoundException e) {
+            this.loginView.wrongCredentialMessage();
+            return false;
+        } catch (IOException e) {
+            this.loginView.systemIOMessage();
+            return false;
+        } catch (Exception e) {
+            this.loginView.unKnownErrorMessage();
+            return false;
+        }
+ 
+    }
+ 
+    public void logoutView() {
+        try {
+            logoutCommand.execute("",
+                                  "");//to implement
+            this.loginView.logoutMessage();
+ 
+        } catch (IOException e) {
+            this.loginView.systemIOMessage();
+        } catch (Exception e) {
+            this.loginView.unKnownErrorMessage();
+        }
+    }
+ 
+ 
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+public class NullController extends State {
+ 
+    @Override
+    public State displayMenu() {
+        return this;
+    }
+ 
+    @Override
+    public boolean isNull() {
+        return true;
+    }
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import java.io.IOException;
+ 
+public abstract class State {
+    public abstract State displayMenu() throws IOException;
+ 
+    public boolean isNull() {
+        return false;
+    }
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.presentation.StatementPageView;
+import com.leg.banking.application.domain.accounts.querries.IGetAccountOfTheLoggedInUserQuery;
+import com.leg.banking.application.domain.transactions.Transaction;
+import com.leg.banking.application.domain.transactions.querries.IGetTransactionsQuery;
+import com.leg.banking.core.exceptions.SpecificControllerNotExistsException;
+ 
+import java.io.IOException;
+import java.util.List;
+ 
+public class StatementController extends State {
+ 
+    private final StatementPageView statementPageView;
+    private         State                             dashboardController;
+    private final IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery;
+    private final IGetTransactionsQuery getTransactionsQuery;
+ 
+    public StatementController(StatementPageView statementPageView,
+                               IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery,
+                               IGetTransactionsQuery getTransactionsQuery) {
+        this.statementPageView = statementPageView;
+        this.getAccountOfTheLoggedInUserQuery = getAccountOfTheLoggedInUserQuery;
+        this.getTransactionsQuery = getTransactionsQuery;
+        this.dashboardController = new NullController();
+    }
+ 
+    //TODO EXCEPTION to catch
+    private List<Transaction> getTransactions() throws IOException {
+        String email=getAccountOfTheLoggedInUserQuery.execute().getEmail();
+        return getTransactionsQuery.execute(email);
+ 
+    }
+    //TODO EXCEPTION to catch
+    @Override
+    public State displayMenu() throws IOException {
+        if (this.dashboardController.isNull()) throw new SpecificControllerNotExistsException();
+        this.statementPageView.displayMenu(getTransactions());
+        return this.dashboardController;
+    }
+ 
+ 
+    /**
+     * @param dashboardController to replace the NullController (the default one)
+     */
+    public void setDashboardController(State dashboardController) {
+        this.dashboardController = dashboardController;
+    }
+}
+package com.leg.banking.presentation.stateMachine;
+ 
+import com.leg.banking.presentation.MainPageView;
+ 
+public class WelcomeController extends State {
+    private final MainPageView view;
+    private final State        loginController;
+    private final State        openBasicCurrentAccountController;
+ 
+    public WelcomeController(MainPageView view,
+                             State loginController,
+                             State openBasicCurrentAccountController) {
+ 
+        this.view = view;
+        this.loginController = loginController;
+        this.openBasicCurrentAccountController = openBasicCurrentAccountController;
+    }
+ 
+    @Override
+    public State displayMenu() {
+        State myState  = new NullController();
+        int   response = view.displayMenu();
+        switch (response) {
+            case 1:
+                myState = this.openBasicCurrentAccountController;
+                break;
+            case 2:
+                myState = this.loginController;
+                break;
+            case 9:
+                break;
+            default:
+                myState = this;
+        }
+        return myState;
+    }
+}
+package com.leg.banking.presentation;
+ 
+import com.leg.banking.presentation.stateMachine.DashboardController;
+ 
+import java.util.Scanner;
+ 
+public class DashboardView {
+    DashboardController dashboardController;
+    Scanner             scanner;
+ 
+    public DashboardView(DashboardController dashboardController) {
+        this.dashboardController = dashboardController;
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public int displayMenu() {
+        this.welcomeMessage();
+        this.balanceMessage();
+        this.menuMessage();
+        return Integer.parseInt(scanner.nextLine());
+    }
+ 
+    public void systemIOMessage() {
+        System.out.println("Input Output -system error");
+    }
+ 
+    public void noUserLoggedInMessage() {
+        System.out.println("None of the users is logged In- system error");
+    }
+ 
+    public void balanceMessage() {
+        System.out.println("\n\n YOUR CURRENT BALANCE IS :" + MoneyFormatter.format(dashboardController.getBalanceOfTheCurrentAccount()));
+    }
+ 
+    public void welcomeMessage() {
+        System.out.println("WELCOME " + dashboardController.getNameOfTheLoggedInUser() + " TO YOUR BASIC CURRENT ACCOUNT");
+    }
+ 
+    public void menuMessage() {
+        System.out.println("What would you like to do?");
+        System.out.println("1. MAKE A DEPOSIT");
+        System.out.println("2. WITHDRAW THE MONEY");
+        System.out.println("3. STATEMENT");
+        System.out.println("9. LOGOUT THE USER");
+    }
+ 
+    public void depositMessage() {
+        System.out.println(" DEPOSIT  MESSAGE TO IMPLEMENT");
+    }
+ 
+    public void withdrawMessage() {
+        System.out.println(" WITHDRAW MESSAGE TO IMPLEMENT");
+    }
+ 
+ 
+    public void unKnownErrorMessage() {
+        System.out.println("Something went wrong");
+    }
+ 
+ 
+}
+package com.leg.banking.presentation;
+ 
+import com.leg.banking.presentation.stateMachine.State;
+ 
+import java.io.IOException;
+ 
+public class FrontController {
+    public State state;
+ 
+    public FrontController(State welcomeController) {
+        this.state = welcomeController;
+    }
+ 
+   //TODO Exception to handle
+    public void displayMenu() throws IOException {
+        this.state = this.state.displayMenu();
+        if (!state.isNull()) {
+            this.displayMenu();
+        }
+    }
+ 
+ 
+}
+package com.leg.banking.presentation;
+ 
+import java.util.Scanner;
+ 
+public class MainPageView {
+ 
+    private final Scanner scanner;
+ 
+    public MainPageView() {
+ 
+        this.scanner = new Scanner(System.in);
+    }
+ 
+    public int displayMenu() {
+        System.out.println("WELCOME TO THE BANK SYSTEM. WHAT DOES CLIENT WANT TO DO?");
+        System.out.println("1.OPEN NEW BASIC CURRENT ACCOUNT");
+        System.out.println("2 LOG IN TO The ACCOUNT");
+        System.out.println("9. Exit system");
+        return Integer.parseInt(scanner.nextLine());
+    }
+}
+package com.leg.banking.presentation;
+ 
+import com.leg.banking.application.domain.valueObject.Money;
+ 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.NumberFormat;
+import java.util.Locale;
+ 
+public class MoneyFormatter {
+ 
+    public static String format(Money money) {
+        BigDecimal value = money.getAmount();
+        BigDecimal displayVal = value.setScale(2,
+                                               RoundingMode.HALF_EVEN);
+        NumberFormat gbpFormat = NumberFormat.getCurrencyInstance(Locale.UK);
+        gbpFormat.setMinimumFractionDigits(1);
+        gbpFormat.setMaximumFractionDigits(2);
+        return gbpFormat.format(displayVal.doubleValue());
+    }
+}
+package com.leg.banking.presentation;
+ 
+import com.leg.banking.application.domain.transactions.Transaction;
+ 
+import java.util.List;
+ 
+public class StatementPageView  {
+ 
+ 
+ 
+ 
+ 
+    public  void  displayMenu(List<Transaction> transactions) {
+    System.out.println("Statement printer.....");
+    transactions.forEach(System.out::println);
+    }
+}
+package com.leg.banking;
+ 
+import com.leg.banking.application.domain.accounts.commands.*;
+import com.leg.banking.presentation.FrontController;
+import com.leg.banking.presentation.StatementPageView;
+import com.leg.banking.application.domain.DashboardService;
+import com.leg.banking.application.domain.IDashboardService;
+import com.leg.banking.application.domain.accounts.IAccountRepository;
+import com.leg.banking.presentation.stateMachine.*;
+import com.leg.banking.application.domain.accounts.querries.GetAccountOfTheLoggedInUserQuery;
+import com.leg.banking.application.domain.accounts.querries.IGetAccountOfTheLoggedInUserQuery;
+import com.leg.banking.application.domain.authentication.ISessionRepository;
+import com.leg.banking.application.domain.authentication.commands.ILoginCommand;
+import com.leg.banking.application.domain.authentication.commands.ILogoutCommand;
+import com.leg.banking.application.domain.authentication.commands.LoginCommand;
+import com.leg.banking.application.domain.authentication.commands.LogoutCommand;
+import com.leg.banking.application.domain.transactions.ITransactionRepository;
+import com.leg.banking.application.domain.transactions.querries.GetTransactionsQuery;
+import com.leg.banking.application.domain.transactions.querries.IGetTransactionsQuery;
+import com.leg.banking.application.domain.users.IUserRepository;
+import com.leg.banking.core.FileStorage;
+import com.leg.banking.core.IDataSource;
+import com.leg.banking.persistence.BasicAccountRepository;
+import com.leg.banking.persistence.SessionRepository;
+import com.leg.banking.persistence.TransactionRepository;
+import com.leg.banking.persistence.UserRepository;
+import com.leg.banking.presentation.MainPageView;
+import com.leg.banking.presentation.basicCurrentAccount.withdrawal.BasicCurrentAccountWithdrawalView;
+import com.leg.banking.presentation.createAccount.CreateBasicCurrentAccountView;
+import com.leg.banking.presentation.login.LoginView;
+ 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+ 
+public class BankDemoApplication {
+ 
+    public static void main(String[] args) throws IOException {
+ 
+        System.out.println("---->Banking system <---");
+        System.out.println("Working Directory = " + System.getProperty("user.dir"));
+ 
+        //Accounts are identified by  unique account property accountName (user email)
+ 
+        final Path currentDirectory = Paths.get("",
+                                                "src",
+                                                "main",
+                                                "java",
+                                                "storage");
+ 
+        final Path pathUsers = Paths.get(currentDirectory.toString(),
+                                         "users.txt");
+        final Path pathBasicCurrentAccounts = Paths.get(currentDirectory.toString(),
+                                                        "basicCurrentAccount.txt");
+        final Path pathSession = Paths.get(currentDirectory.toString(),
+                                           "session.txt");
+        final Path pathTransactions = Paths.get(currentDirectory.toString(),
+                                                "transaction.txt");
+ 
+ 
+        //-------------data
+        // storage
+        // -------------------------------------------------------------------------------------
+        IDataSource usersFileStorage        = new FileStorage(pathUsers);
+        IDataSource basicAccountFileStorage = new FileStorage(pathBasicCurrentAccounts);
+        IDataSource sessionFileStorage      = new FileStorage(pathSession);
+        IDataSource transactionFileStorage  = new FileStorage(pathTransactions);
+ 
+        //-------------repositories
+        // -------------------------------------------------------------------------------------
+ 
+        IUserRepository        userRepository                = new UserRepository(usersFileStorage);
+        ITransactionRepository transactionRepository         = new TransactionRepository(transactionFileStorage);
+        IAccountRepository     basicCurrentAccountRepository = new BasicAccountRepository(basicAccountFileStorage);
+        ISessionRepository sessionRepository = new SessionRepository(10 * 60 * 1000,
+                                                                     sessionFileStorage);
+ 
+        //-------------services
+        // -----------------------------------------------------------------------------------------
+ 
+        IDashboardService dashboardService = new DashboardService(sessionRepository,
+                                                                  userRepository,
+                                                                  basicCurrentAccountRepository);
+ 
+        //-------------USE-CASES--------------------------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+ 
+        ICreateBasicCurrentAccountCommand createBasicCurrentAccountCommand = new CreateBasicCurrentAccountCommand(userRepository,
+                                                                                                                  basicCurrentAccountRepository);
+        ILoginCommand loginCommand = new LoginCommand(sessionRepository,
+                                                      userRepository);
+        ILogoutCommand logoutCommand = new LogoutCommand(sessionRepository);
+        IMakeDepositCommand makeDepositCommand = new MakeDepositCommand(basicCurrentAccountRepository,
+                                                                        transactionRepository);
+        IMakeWithdrawalCommand makeWithdrawalCommand = new MakeWithdrawalCommand(basicCurrentAccountRepository,
+                                                                                 transactionRepository);
+        IGetAccountOfTheLoggedInUserQuery getAccountOfTheLoggedInUserQuery = new GetAccountOfTheLoggedInUserQuery(sessionRepository,
+                                                                                                                  basicCurrentAccountRepository);
+        IGetTransactionsQuery getTransactionsQuery=new GetTransactionsQuery(transactionRepository);
+ 
+ 
+        //page
+        MainPageView                      mainPageView                      = new MainPageView();
+        BasicCurrentAccountWithdrawalView basicCurrentAccountWithdrawalView = new BasicCurrentAccountWithdrawalView();
+ 
+        LoginView                     loginView                     = new LoginView();
+        MainPageView                  view                          = new MainPageView();
+        CreateBasicCurrentAccountView createBasicCurrentAccountView = new CreateBasicCurrentAccountView();
+        StatementPageView statementPageView             = new StatementPageView();
+ 
+ 
+        //--------------controllers
+        // -------------------------------------------------------------------------------------
+ 
+        BasicCurrentAccountDepositController basicCurrentAccountDepositController = new BasicCurrentAccountDepositController(makeDepositCommand,
+                                                                                                                             getAccountOfTheLoggedInUserQuery);
+ 
+        BasicCurrentAccountWithdrawalController basicCurrentAccountWithdrawalController = new BasicCurrentAccountWithdrawalController(basicCurrentAccountWithdrawalView,
+                                                                                                                                      makeWithdrawalCommand,
+                                                                                                                                      getAccountOfTheLoggedInUserQuery);
+ 
+ 
+        LoginController loginController = new LoginController(loginView,
+                                                              loginCommand,
+                                                              logoutCommand);
+        StatementController statementController = new StatementController(statementPageView,
+                                                                          getAccountOfTheLoggedInUserQuery,
+                                                                          getTransactionsQuery);
+ 
+ 
+        DashboardController dashboardController = new DashboardController(dashboardService,
+                                                                          basicCurrentAccountDepositController,
+                                                                          basicCurrentAccountWithdrawalController,
+                                                                          loginController,
+                                                                          statementController);
+ 
+        basicCurrentAccountDepositController.setDashboardController(dashboardController);
+        basicCurrentAccountWithdrawalController.setDashboardController(dashboardController);
+        statementController.setDashboardController(dashboardController);
+        CreateBasicCurrentAccountController createBasicCurrentAccountController = new CreateBasicCurrentAccountController(createBasicCurrentAccountView,
+                                                                                                                          createBasicCurrentAccountCommand);
+ 
+        WelcomeController welcomeController = new WelcomeController(mainPageView,
+                                                                    loginController,
+                                                                    createBasicCurrentAccountController);
+        createBasicCurrentAccountController.setWelcomeController(welcomeController);
+        loginController.setWelcomeController(welcomeController);
+        loginController.setDashboardController(dashboardController);
+ 
+        //------------front
+        // controller
+        // ----------------------------------------------------------------------------------
+        System.out.println("\n\nTESTING directory of the file: " + pathBasicCurrentAccounts + " " + pathBasicCurrentAccounts.toAbsolutePath() + "\n\n");
+        FrontController frontController = new FrontController(welcomeController);
+        frontController.displayMenu();
+ 
+ 
+    }
+}
+-------------------
+package com.leg.banking.application.domain.accounts;
+ 
+import com.leg.banking.application.domain.valueObject.Money;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+ 
+import java.io.IOException;
+ 
+class BasicCurrentAccountTest {
+    Account basicCurrentAccount;
+ 
+    @BeforeEach
+    public void setUp() {
+        basicCurrentAccount = new BasicCurrentAccount(marcin@marcin.pl,
+                                                      new Money("232.99"));
+    }
+ 
+    @Test
+    public void getBalance() {
+        Assertions.assertEquals("232.99",
+                                basicCurrentAccount.getBalance()
+                                                   .getAmount()
+                                                   .toString());
+    }
+ 
+    @Test
+    public void getEmail() {
+        Assertions.assertEquals(marcin@marcin.pl,
+                                basicCurrentAccount.getEmail());
+    }
+ 
+    @Test
+    public void deposit() throws IOException {
+        Account accountAfterDeposit = basicCurrentAccount.deposit(new Money("11.99"));
+        Assertions.assertEquals("244.98",
+                                accountAfterDeposit.getBalance()
+                                                   .getAmount()
+                                                   .toString());
+    }
+ 
+    @Test
+    public void withdraw() throws IOException {
+        Account accountAfterWithdrawal = basicCurrentAccount.withdraw(new Money("11.99"));
+        Assertions.assertEquals("221.00",
+                                accountAfterWithdrawal.getBalance()
+                                                      .getAmount()
+                                                      .toString());
+    }
+}
+ 
+package com.leg.banking.application.domain.valueObject;
+ 
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+ 
+class MoneyTest {
+    Money money1;
+    Money money2;
+    Money money10;
+ 
+    @BeforeEach
+    public void setUp() {
+        money1 = new Money("33.33");
+        money2 = new Money("55.55");
+        money10 = new Money("99.99");
+    }
+ 
+    @Test
+    public void getAmount() {
+        Assertions.assertEquals("33.33",
+                                money1.getAmount()
+                                      .toString());
+        Assertions.assertEquals("55.55",
+                                money2.getAmount()
+                                      .toString());
+    }
+ 
+    @Test
+    public void add() {
+        Money money3  = money1.add(money2);
+        Money money30 = money2.add(money10);
+        Assertions.assertEquals("88.88",
+                                money3.getAmount()
+                                      .toString());
+        Assertions.assertEquals("88.88",
+                                money3.getAmount()
+                                      .toString());
+        Assertions.assertEquals("155.54",
+                                money30.getAmount()
+                                       .toString());
+    }
+ 
+    @Test
+    public void subtract() {
+        Money money3  = money1.subtract(money2);
+        Money money30 = money2.subtract(money10);
+        Assertions.assertEquals("-22.22",
+                                money3.getAmount()
+                                      .toString());
+        Assertions.assertEquals("-44.44",
+                                money30.getAmount()
+                                       .toString());
+    }
+ 
+    @Test
+    public void isPositiveOrAZero() {
+        Money money3  = money1.subtract(money2);
+        Money money30 = money10.subtract(money2);
+        Assertions.assertFalse(money3.isPositiveOrAZero());
+        Assertions.assertTrue(money30.isPositiveOrAZero());
+    }
+ 
+    @Test
+    public void isNegative() {
+        Money money3  = money1.subtract(money2);
+        Money money30 = money10.subtract(money2);
+        Assertions.assertTrue(money3.isNegative());
+        Assertions.assertFalse(money30.isNegative());
+    }
+}
+package com.leg.banking.core;
+ 
+ 
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+ 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+ 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+ 
+ 
+//Smoke tests and testing behaviour with these unit tests
+// dateOfBirth,email,password,firstName,surname
+ 
+class FileStorageTest {
+    FileStorage fileStorage;
+    Path        path;
+ 
+    /* This directory and the files created in it will be deleted after
+     * tests are run, even in the event of failures or exceptions.
+     */
+    @TempDir
+    Path tempDir;
+ 
+ 
+    @BeforeEach
+    public void setUp() throws IOException {
+ 
+        try {
+            path = tempDir.resolve("testFileStorage.txt");
+        } catch (InvalidPathException ipe) {
+            System.err.println("error creating temporary test file in " + this.getClass()
+                                                                              .getSimpleName());
+        }
+        fileStorage = new FileStorage(path);
+ 
+    }
+ 
+ 
+    @DisplayName("checking if a record is added to a file")
+    @Test
+    public void addRow() throws IOException {
+        List<String> row = Arrays.asList("dateOfBirth",
+                                         "email",
+                                         "password",
+                                         "firstName",
+                                         "surname");
+ 
+        fileStorage.addRow(row);
+        try (FileReader fr = new FileReader(path.toFile()); BufferedReader bufferedReader = new BufferedReader(fr)
+ 
+        ) {
+            String myLine = bufferedReader.readLine();
+            assertNotNull(myLine);
+            String[] myArray = myLine.split(" ");
+            Assertions.assertArrayEquals(new String[]{"dateOfBirth", "email", "password", "firstName", "surname"},
+                                         myArray);
+ 
+ 
+        }
+ 
+ 
+    }
+ 
+ 
+    @DisplayName("checking if a record is  returned from a file")
+    @Test
+    public void getRow() throws IOException {
+        String[] expected = new String[]{"dateOfBirth", "email", "password", "firstName", "surname"};
+ 
+        String toWrite = "dateOfBirth email password firstName surname";
+        Files.write(path,
+                    List.of(toWrite));
+        String[] actual = fileStorage.getRow(0,
+                                             "dateOfBirth");
+        Assertions.assertArrayEquals(expected,
+                                     actual);
+ 
+ 
+    }
+ 
+    @DisplayName("updating  a record where index=3 \n \tand lookingFor='firstName3'  updating \n\t index=4 with value='Wasilewski'")
+    @Test
+    public void updateRow() throws IOException {
+        Files.writeString(path,
+                          "dateOfBirth1 email1 password1 firstName1 surname1" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth2 email2 password2 firstName2 surname2" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth3 email3 password3 firstName3 surname3" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth4 email4 password4 firstName4 surname4" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+ 
+        this.fileStorage.updateRow(3,
+                                   "firstName3",
+                                   4,
+                                   "Wasilewski");
+        String[]     myFields = new String[5];
+        int          i        = 1;
+        List<String> contents = Files.readAllLines(path);
+        for (String content : contents) {
+            if (i++ == 3) {
+                myFields = content.split(" ");
+                break;
+            }
+        }
+        Assertions.assertEquals(myFields[4],
+                                "Wasilewski");
+ 
+    }
+ 
+ 
+    @DisplayName("checking if all rows are returned")
+    @Test
+    public void getAllRows() throws IOException {
+        //@formatter:off
+        String[] expectedArray1 = new String[]{"dateOfBirth1", "email1", "password1", "firstName1", "surname1"};
+        String[] expectedArray2 = new String[]{"dateOfBirth2", "email2", "password2", "firstName2", "surname2"};
+        String[] expectedArray3 = new String[]{"dateOfBirth3", "email3", "password3", "firstName3", "surname3"};
+        String[] expectedArray4 = new String[]{"dateOfBirth4", "email4", "password4", "firstName4", "surname4"};
+ 
+        List<List<String>> expected=new ArrayList<>();
+        expected.add(Arrays.asList(expectedArray1));
+        expected.add(Arrays.asList(expectedArray2));
+        expected.add(Arrays.asList(expectedArray3));
+        expected.add(Arrays.asList(expectedArray4));
+ 
+        Files.writeString(path,"dateOfBirth1 email1 password1 firstName1 surname1"+System.lineSeparator(),StandardOpenOption.APPEND);
+        Files.writeString(path,"dateOfBirth2 email2 password2 firstName2 surname2"+System.lineSeparator(),StandardOpenOption.APPEND);
+        Files.writeString(path,"dateOfBirth3 email3 password3 firstName3 surname3"+System.lineSeparator(),StandardOpenOption.APPEND);
+        Files.writeString(path,"dateOfBirth4 email4 password4 firstName4 surname4"+System.lineSeparator(),StandardOpenOption.APPEND);
+ 
+ 
+ 
+        List<List<String>>  actual = fileStorage.getAllRows();
+ 
+        Assertions.assertEquals(expected,actual);
+ 
+    }
+    @DisplayName("Removing 2nd record")
+    @Test
+    public void removeRow()throws IOException {
+        Files.writeString(path,
+                          "dateOfBirth1 email1 password1 firstName1 surname1" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth2 email2 password2 firstName2 surname2" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth3 email3 password3 firstName3 surname3" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+        Files.writeString(path,
+                          "dateOfBirth4 email4 password4 firstName4 surname4" + System.lineSeparator(),
+                          StandardOpenOption.APPEND);
+ 
+        fileStorage.removeRow(0,"dateOfBirth2");
+ 
+        List<String> contents = Files.readAllLines(path);
+ 
+        Assertions.assertEquals(3,contents.size() ,"number of records should be 3");
+        Assertions.assertEquals(contents.get(0).split(" ")[0],"dateOfBirth1","1st record should stay unchanged");
+        Assertions.assertEquals(contents.get(1).split(" ")[0],"dateOfBirth3","fields of the 2nd record should have values of the 3rd record now");
+ 
+    }
+ 
+ 
+ 
+    @DisplayName("checking if all rows are return with a specific email")
+@Test
+    public void testGetAllRows1()throws IOException {
+ 
+    String[] expectedArray1 = new String[]{"dateOfBirth1", "email1", "password1", "firstName1", "surname1"};
+    String[] expectedArray2 = new String[]{"dateOfBirth2", "email1", "password2", "firstName2", "surname2"};
+    //String[] expectedArray3 = new String[]{"dateOfBirth3", "email3", "password3", "firstName3", "surname3"};
+    String[] expectedArray4 = new String[]{"dateOfBirth4", "email1", "password4", "firstName4", "surname4"};
+ 
+    List<List<String>> expected=new ArrayList<>();
+    expected.add(Arrays.asList(expectedArray1));
+    expected.add(Arrays.asList(expectedArray2));
+    //expected.add(Arrays.asList(expectedArray3));
+    expected.add(Arrays.asList(expectedArray4));
+ 
+    Files.writeString(path,"dateOfBirth1 email1 password1 firstName1 surname1"+System.lineSeparator(),StandardOpenOption.APPEND);
+    Files.writeString(path,"dateOfBirth2 email1 password2 firstName2 surname2"+System.lineSeparator(),StandardOpenOption.APPEND);
+    Files.writeString(path,"dateOfBirth3 email3 password3 firstName3 surname3"+System.lineSeparator(),StandardOpenOption.APPEND);
+    Files.writeString(path,"dateOfBirth4 email1 password4 firstName4 surname4"+System.lineSeparator(),StandardOpenOption.APPEND);
+ 
+ 
+ 
+    List<List<String>>  actual = fileStorage.getAllRows(1,"email1");
+ 
+    Assertions.assertEquals(expected,actual);
+ 
+ 
+  }
+ 
+ 
+ 
+}
+ 
+ 
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi=http://www.w3.org/2001/XMLSchema-instance xmlns=http://maven.apache.org/POM/4.0.0
+         xsi:schemaLocation=http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.leg</groupId>
+    <artifactId>bank-demo</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>bank-demo</name>
+    <description>banking application</description>
+    <properties>
+        <project.build.sourceEncoding>Cp1252</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>Cp1252</project.reporting.outputEncoding>
+        <java.version>17</java.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.8.2</version>
+            <scope>test</scope>
+        </dependency>
+ 
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>4.0.0</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.0.0</version>
+                <configuration>
+                    <mainClass>com.leg.banking.BankDemoApplication
+                   </mainClass>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.5.0</version>
+ 
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>
+                                jar
+                            </goal>
+                        </goals>
+                        <phase>install</phase>
+                    </execution>
+                </executions>
+ 
+            </plugin>
+        </plugins>
+    </build>
+</project>
